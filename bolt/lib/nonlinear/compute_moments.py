@@ -38,10 +38,12 @@ def compute_moments(self, moment_name, f=None):
 
     if(f is None):
         f = self.f
+
+    #measure = (4./(2.*np.pi*self.physical_system.params.h_bar)**2) * self.dp3 * self.dp2 * self.dp1
         
     moment = af.broadcast(getattr(self.physical_system.moments, 
                                   moment_name
-                                 ), f, p1, p2, p3, self.dp3 * self.dp2 * self.dp1
+                                 ), f, p1, p2, p3, self.physical_system.params.integral_measure
                          )
 
     af.eval(moment)

@@ -5,6 +5,7 @@ from .riemann import riemann_solver
 from .reconstruct import reconstruct
 from bolt.lib.utils.broadcasted_primitive_operations import multiply
 from bolt.lib.nonlinear.communicate import communicate_fields
+#from bolt.lib.utils.coord_transformation import sqrt_det_g
 
 """
 Equation to solve:
@@ -85,12 +86,18 @@ def df_dt_fvm(f, self, term_to_return = 'all'):
         right_flux = af.shift(left_flux, 0, 0, -1)
         top_flux   = af.shift(bot_flux,  0, 0,  0, -1)
         
-        df_dt += - (right_flux - left_flux) / self.dq1 \
-                 - (top_flux   - bot_flux ) / self.dq2 \
+        # First get the purely spatial sqrt_get_g
+        #g_tmp = sqrt_det_g(self.q1_center, self.q2_center, \
+        #                   self.physical_system.params.q1_start_local_left, \
+        #                   self.physical_system.params.q2_start_local_bottom)
+        g_tmp = self.physical_system.params.sqrt_det_g
+        # Now need to make it compatible with the higher dim data structure f      
+        g = multiply(g_tmp, self.p1_center**0)
+        
+        df_dt += - (right_flux - left_flux) / (g*self.dq1) \
+                 - (top_flux   - bot_flux ) / (g*self.dq2) \
 
-        if(    self.physical_system.params.source_enabled == True 
-           and self.physical_system.params.instantaneous_collisions != True
-          ):
+        if(self.physical_system.params.source_enabled == True):
             df_dt += self._source(f, self.time_elapsed, 
                                   self.q1_center, self.q2_center,
                                   self.p1_center, self.p2_center, self.p3_center, 
@@ -104,7 +111,7 @@ def df_dt_fvm(f, self, term_to_return = 'all'):
         if(    self.physical_system.params.fields_type == 'electrodynamic'
            and self.fields_solver.at_n == False
           ):
-            
+            #TODO: Remove hybrid_model from lib and put into src 
             if(self.physical_system.params.hybrid_model_enabled == True):
 
                 communicate_fields(self.fields_solver, True)
@@ -243,6 +250,13 @@ def df_dt_fvm(f, self, term_to_return = 'all'):
 
                 self.fields_solver.compute_electrostatic_fields(rho)
 
+        #TODO : This is a hack. Fix.
+        E1 = 0.*self.fields_solver.cell_centered_EM_fields[0]
+        E2 = 0.*self.fields_solver.cell_centered_EM_fields[1]
+        E3 = 0.*self.fields_solver.cell_centered_EM_fields[2]
+        B1 = 0.*self.fields_solver.cell_centered_EM_fields[3]
+        B2 = 0.*self.fields_solver.cell_centered_EM_fields[4]
+        B3 = 0.*self.fields_solver.cell_centered_EM_fields[5]
 
         # Fields solver object is passed to C_p where the get_fields method
         # is used to get the electromagnetic fields. The fields returned are
@@ -252,20 +266,20 @@ def df_dt_fvm(f, self, term_to_return = 'all'):
         # On the (n+1/2)-th step it returns (E1^{n+1/2}, E2^{n+1/2}, E3^{n+1/2}, B1^{n+1/2}, B2^{n+1/2}, B3^{n+1/2})
         self._C_p1 = af.broadcast(self._C_p, self.time_elapsed,
                                   self.q1_center, self.q2_center,
-                                  self.p1_left, self.p2_left, self.p3_left,
-                                  self.fields_solver, self.physical_system.params
+                                  self.p1_left, self.p2_left, self.p3_left, E1, E2, E3, B1, B2, B3,
+                                  self.physical_system.params
                                  )[0]
 
         self._C_p2 = af.broadcast(self._C_p, self.time_elapsed,
                                   self.q1_center, self.q2_center,
-                                  self.p1_bottom, self.p2_bottom, self.p3_bottom,
-                                  self.fields_solver, self.physical_system.params
+                                  self.p1_bottom, self.p2_bottom, self.p3_bottom, E1, E2, E3, B1, B2, B3,
+                                  self.physical_system.params
                                  )[1]
 
         self._C_p3 = af.broadcast(self._C_p, self.time_elapsed,
                                   self.q1_center, self.q2_center,
-                                  self.p1_back, self.p2_back, self.p3_back,
-                                  self.fields_solver, self.physical_system.params
+                                  self.p1_back, self.p2_back, self.p3_back, E1, E2, E3, B1, B2, B3,
+                                  self.physical_system.params
                                  )[2]
 
         self._C_p1 = self._convert_to_p_expanded(self._C_p1)
